@@ -11,9 +11,6 @@ name :开始构建 ssr+ 两个平台 by wk
       快速失败：假
       矩阵：
         包括：
-          -拱门：aarch64_cortex-a53
-            目标：mvebu-cortexa53
-
           -拱门：x86_64
             目标：x86-64
 
