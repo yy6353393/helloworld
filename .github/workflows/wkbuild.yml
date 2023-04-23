@@ -1,60 +1,64 @@
-name :开始构建 ssr+ 两个平台 by wk
+name: Start build ssr+  two platforms by wk
 
-上：
- workflow_dispatch：
+on:
+ workflow_dispatch:
  
-职位：
-  构建：
-    名称：测试 ${{ matrix.arch }}
-    运行：ubuntu-latest
-    策略：
-      快速失败：假
-      矩阵：
-        包括：
-          -拱门：x86_64
-            目标：x86-64
+jobs:
+  build:
+    name: Test ${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            target: x86-64
 
-    步骤：
-      -使用：动作/结账@v3
-        与：
-          提取深度：0
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
-      - name :确定分支名称
-        运行：|
-          分支=“主人”
-          echo "为 $BRANCH 构建"
+      - name: Determine branch name
+        run: |
+          BRANCH="master"
+          echo "Building for $BRANCH"
           echo "BRANCH=$BRANCH" >> $GITHUB_ENV
-      -名称：确定更改的包
-        运行：|
-          # 只检测有变化的包
-          PKG_ROOTS=$(找到 . -name Makefile | \
+
+      - name: Determine changed packages
+        run: |
+          # only detect packages with changes
+          PKG_ROOTS=$(find . -name Makefile | \
             grep -v ".*/src/Makefile" | \
             sed -e 's@./\(.*\)/Makefile@\1/@')
           CHANGES=$(git diff --diff-filter=d --name-only origin/$BRANCH)
-          在 $PKG_ROOTS 中获取 ROOT；做
-            $CHANGES 中的 CHANGE；做
-              如果 [[ "$CHANGE" == "$ROOT"* ]]; 然后
+
+          for ROOT in $PKG_ROOTS; do
+            for CHANGE in $CHANGES; do
+              if [[ "$CHANGE" == "$ROOT"* ]]; then
                 PACKAGES+=$(echo "$ROOT" | sed -e 's@\(.*\)/@\1 @')
-                休息
-              菲
-            完毕
-          完毕
-          # 如果没有明确更改，则回退到测试包这是
-          # 如果 packages.git 中的其他机制发生变化，应该运行
+                break
+              fi
+            done
+          done
+          # fallback to test packages if nothing explicitly changes this is
+          # should run if other mechanics in packages.git changed
           PACKAGES="${PACKAGES:-luci-app-ssr-plus}"
-          echo "构建 $PACKAGES"
+
+          echo "Building $PACKAGES"
           echo "PACKAGES=$PACKAGES" >> $GITHUB_ENV
-      -名称：构建
-        使用：immortalwrt/gh-action-sdk@v4.1
-        环境：
-          拱门：${{ matrix.arch }}-${{ env.BRANCH }}
-          FEEDNAME：packages_ci
 
-      -名称：将创建的包移动到项目目录
-        运行：cp bin/packages/${{ matrix.arch }}/packages_ci/*.ipk。|| 真的
+      - name: Build
+        uses: immortalwrt/gh-action-sdk@v4.1
+        env:
+          ARCH: ${{ matrix.arch }}-${{ env.BRANCH }}
+          FEEDNAME: packages_ci
 
-      -名称：收集元数据
-        运行：|
+      - name: Move created packages to project dir
+        run: cp bin/packages/${{ matrix.arch }}/packages_ci/*.ipk . || true
+
+      - name: Collect metadata
+        run: |
           MERGE_ID=$(git rev-parse --short HEAD)
           echo "MERGE_ID=$MERGE_ID" >> $GITHUB_ENV
           echo "BASE_ID=$(git rev-parse --short HEAD^1)" >> $GITHUB_ENV
@@ -62,33 +66,36 @@ name :开始构建 ssr+ 两个平台 by wk
           PRNUMBER=${GITHUB_REF_NAME%/merge}
           echo "PRNUMBER=$PRNUMBER" >> $GITHUB_ENV
           echo "ARCHIVE_NAME=${{matrix.arch}}-PR$PRNUMBER-$MERGE_ID" >> $GITHUB_ENV
-      -名称：生成元数据
-        运行：|
+
+      - name: Generate metadata
+        run: |
           cat << _EOF_ > PKG-INFO
-          元数据版本：2.1
-          名称：${{env.ARCHIVE_NAME}}
-          版本：$分支
-          作者：$GITHUB_ACTOR
-          主页：$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/pull/$PRNUMBER
-          下载网址：$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
-          摘要：$包
-          平台：${{ matrix.arch }}
-          在 ${{matrix.arch}} 上运行的 ImmortalWrt $BRANCH 的软件包，由 PR $PRNUMBER 构建
-          在提交 $HEAD_ID 时，针对 $BRANCH 在提交 $BASE_ID 时，合并 SHA $MERGE_ID。
-          修改包：
+          Metadata-Version: 2.1
+          Name: ${{env.ARCHIVE_NAME}}
+          Version: $BRANCH
+          Author: $GITHUB_ACTOR
+          Home-page: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/pull/$PRNUMBER
+          Download-URL: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+          Summary: $PACKAGES
+          Platform: ${{ matrix.arch }}
+          Packages for ImmortalWrt $BRANCH running on ${{matrix.arch}}, built from PR $PRNUMBER
+          at commit $HEAD_ID, against $BRANCH at commit $BASE_ID, with merge SHA $MERGE_ID.
+          Modified packages:
           _EOF_
-          对于 $PACKAGES 中的 p
-          做
-            echo " "$p >> PKG-INFO
-          完毕
-          echo >> PKG-信息
-          echo 完整文件列表：>> PKG-INFO
-          ls -al *.ipk >> PKG-INFO || 真的
-          猫包装信息
-      -名称：存储包
-        使用：动作/上传工件@v3
-        与：
-          名称：${{env.ARCHIVE_NAME}}-packages
-          路径：|
+          for p in $PACKAGES
+          do
+            echo "  "$p >> PKG-INFO
+          done
+          echo >> PKG-INFO
+          echo Full file listing: >> PKG-INFO
+          ls -al *.ipk >> PKG-INFO || true
+          cat PKG-INFO
+
+      - name: Store packages
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{env.ARCHIVE_NAME}}-packages
+          path: |
             *.ipk
-            包装信息
+            PKG-INFO
+
